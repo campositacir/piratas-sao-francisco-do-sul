@@ -9,6 +9,66 @@ let zoom = false;
 let virando = false;
 let inicio = null;
 
+let audio;
+let ruidoPapel;
+let somAtivo = true;
+
+function prepararSom() {
+  const Contexto = window.AudioContext || window.webkitAudioContext;
+  if (!somAtivo || !Contexto) return;
+  try {
+    audio ??= new Contexto();
+    return audio.state === 'running' ? Promise.resolve() : audio.resume();
+  } catch {
+    return;
+  }
+}
+
+function tocarPapel() {
+  const pronto = prepararSom();
+  if (!pronto) return;
+  pronto.then(() => {
+    if (!somAtivo || audio.state !== 'running') return;
+    if (!ruidoPapel) {
+      ruidoPapel = audio.createBuffer(1, Math.ceil(audio.sampleRate * 0.29), audio.sampleRate);
+      const amostras = ruidoPapel.getChannelData(0);
+      for (let i = 0; i < amostras.length; i++) amostras[i] = Math.random() * 2 - 1;
+    }
+    const agora = audio.currentTime;
+    const folha = audio.createBufferSource();
+    const filtro = audio.createBiquadFilter();
+    const volume = audio.createGain();
+    folha.buffer = ruidoPapel;
+    filtro.type = 'bandpass';
+    filtro.Q.value = 0.65;
+    filtro.frequency.setValueAtTime(1900, agora);
+    filtro.frequency.exponentialRampToValueAtTime(680, agora + 0.27);
+    volume.gain.setValueAtTime(0.001, agora);
+    volume.gain.linearRampToValueAtTime(0.30, agora + 0.055);
+    volume.gain.exponentialRampToValueAtTime(0.09, agora + 0.14);
+    volume.gain.linearRampToValueAtTime(0.16, agora + 0.17);
+    volume.gain.exponentialRampToValueAtTime(0.001, agora + 0.28);
+    folha.connect(filtro).connect(volume).connect(audio.destination);
+    folha.start(agora);
+  }).catch(() => {});
+}
+
+const botaoSom = document.createElement('button');
+botaoSom.type = 'button';
+botaoSom.textContent = 'Som';
+botaoSom.setAttribute('aria-label', 'Som de folhear');
+botaoSom.setAttribute('aria-pressed', 'true');
+if (window.AudioContext || window.webkitAudioContext) {
+  obter('proxima').after(botaoSom);
+  botaoSom.onclick = () => {
+    somAtivo = !somAtivo;
+    botaoSom.textContent = somAtivo ? 'Som' : 'Sem som';
+    botaoSom.setAttribute('aria-pressed', String(somAtivo));
+    if (somAtivo) prepararSom()?.catch(() => {});
+  };
+}
+
+
 function pagina(numero) {
   const imagem = new Image();
   imagem.className = 'pagina';
@@ -45,6 +105,7 @@ function virar(sentido) {
   indice = destino;
   renderizar();
   obter('janela').scrollTo(0, 0);
+  tocarPapel();
   if (movimentoReduzido.matches) return;
   virando = true;
   velha.style.width = largura + 'px';
@@ -56,6 +117,7 @@ function virar(sentido) {
 }
 
 obter('abrir').onclick = () => {
+  prepararSom()?.catch(() => {});
   obter('entrada').hidden = true;
   leitor.hidden = false;
   renderizar();
